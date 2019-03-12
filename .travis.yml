@@ -1,6 +1,7 @@
 services:
   - mongodb
   - postgresql
+  - mysql
 
 sudo: required
 dist: trusty
@@ -18,30 +19,74 @@ install:
 
 before_script:
   - psql -c 'create database strapi_test;' -U postgres
+  - mysql -e 'CREATE DATABASE strapi_test;'
 
-script:
+  # script:
   # run snyk
-  - npm run -s test:snyk
-
+  # - npm run -s test:snyk
   # default unit test
-  - npm run -s test:unit
-
-  # e2e trests
-  - npm run -s test:generate-app --dbclient=postgres --dbhost=localhost --dbport=5432 --dbname=strapi_test --dbusername=postgres --dbpassword=
-  - npm run -s test:start-app & wait-on http://localhost:1337
-  - npm run -s test:e2e
-
+  # - npm run -s test:unit
+  # # e2e trests
+  # - npm run -s test:generate-app --dbclient=postgres --dbhost=localhost --dbport=5432 --dbname=strapi_test --dbusername=postgres --dbpassword=
+  # - npm run -s test:start-app & wait-on http://localhost:1337
+  # - npm run -s test:e2e
   # cypress tests
-  - npm run -s test:generate-app --dbclient=mongo --dbhost=localhost --dbport=27017 --dbname=strapi_test --dbusername= --dbpassword=
-  - npm run -s test:start-app & wait-on http://localhost:1337
-  - npm run -s cypress:run
-
-  # lint and doc
-  - npm run -s lint
-  - npm run -s doc
+  # - npm run -s test:generate-app --dbclient=mongo --dbhost=localhost --dbport=27017 --dbname=strapi_test --dbusername= --dbpassword=
+  # - npm run -s test:start-app & wait-on http://localhost:1337
+  # - npm run -s cypress:run
+  # # lint and doc
+  # - npm run -s lint
+  # - npm run -s doc
 
 cache:
   directories:
     - node_modules
     - ~/.npm
     - ~/.cache
+
+e2e_tests: &e2e_tests
+  stage: 'End to End tests'
+  script:
+    - npm run -s test:generate-app $DB_STRING
+    - npm run -s test:start-app & wait-on http://localhost:1337
+    - npm run -s test:e2e
+
+jobs:
+  include:
+    - stage: test
+      name: 'Snyk test'
+      script:
+        - npm run -s test:snyk
+
+    - name: 'Unit tests'
+      script:
+        - npm run -s test:unit
+
+    - <<: *e2e_tests
+      env:
+        - DB_STRING="--dbclient=postgres --dbhost=localhost --dbport=5432 --dbname=strapi_test --dbusername=postgres --dbpassword="
+
+    - <<: *e2e_tests
+      env:
+        # mysql
+        - DB_STRING="--dbclient=mysql --dbhost=localhost --dbport=3306 --dbname=strapi_test --dbusername=travis --dbpassword="
+
+    - <<: *e2e_tests
+      env:
+        # sqlite
+        - DB_STRING="--dbclient=sqlite --dbfile=./tmp/data.db"
+
+    - <<: *e2e_tests
+      env:
+        # mongo
+        - DB_STRING="--dbclient=mongo --dbhost=localhost --dbport=27017 --dbname=strapi_test --dbusername= --dbpassword="
+
+    - stage: 'Cypress tests'
+      script:
+        - npm run -s test:generate-app --dbclient=mongo --dbhost=localhost --dbport=27017 --dbname=strapi_test --dbusername= --dbpassword=
+        - npm run -s test:start-app & wait-on http://localhost:1337
+        - npm run -s cypress:run
+
+    - stage: 'Lint and Docs'
+      script: npm run -s lint
+    - script: npm run -s doc
